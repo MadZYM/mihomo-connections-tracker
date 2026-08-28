@@ -1,0 +1,49 @@
+name: Build OpenWrt x86_64 musl
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/**'
+      - '.github/workflows/build-openwrt-musl.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-x86_64-musl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross
+        uses: taiki-e/install-action@cross
+
+      - name: Build x86_64 musl
+        working-directory: backend
+        run: cross build --release --locked --target x86_64-unknown-linux-musl
+
+      - name: Prepare artifact
+        run: |
+          cp backend/target/x86_64-unknown-linux-musl/release/mihomo-connections-tracker \
+             mihomo-connections-tracker_linux_x86_64_musl
+          chmod +x mihomo-connections-tracker_linux_x86_64_musl
+          file mihomo-connections-tracker_linux_x86_64_musl
+          sha256sum mihomo-connections-tracker_linux_x86_64_musl > mihomo-connections-tracker_linux_x86_64_musl.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mihomo-connections-tracker_linux_x86_64_musl
+          path: |
+            mihomo-connections-tracker_linux_x86_64_musl
+            mihomo-connections-tracker_linux_x86_64_musl.sha256
+          if-no-files-found: error
+          retention-days: 30
