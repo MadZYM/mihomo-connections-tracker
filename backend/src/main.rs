@@ -2,6 +2,7 @@ mod common;
 mod config;
 mod db;
 mod api;
+mod dashboard;
 mod master;
 mod agent;
 
