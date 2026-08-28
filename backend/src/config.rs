@@ -7,17 +7,25 @@ pub struct MasterConfig {
     #[clap(long, default_value = "master.db")]
     pub database: String,
 
-    /// 监听地址
+    /// API 监听地址
     #[clap(long, default_value = "0.0.0.0")]
     pub listen_host: String,
 
-    /// 监听端口
+    /// API 监听端口
     #[clap(long, default_value = "8080")]
     pub listen_port: u16,
 
     /// API 认证令牌
     #[clap(long)]
     pub api_token: Option<String>,
+
+    /// Web Dashboard 监听地址。默认监听全部接口，LAN/ZeroTier 客户端可直接访问。
+    #[clap(long, default_value = "0.0.0.0")]
+    pub dashboard_host: String,
+
+    /// Web Dashboard 监听端口。Dashboard 固定不启用认证。
+    #[clap(long, default_value = "9092")]
+    pub dashboard_port: u16,
     
     /// Mihomo API服务器主机地址（可选，用于主节点独立运行）
     #[clap(long)]
@@ -70,4 +78,4 @@ pub struct AgentConfig {
     /// 数据保留天数（超过这个天数的已同步数据会被删除）
     #[clap(long, default_value = "7")]
     pub data_retention_days: i64,
-} 
+}
