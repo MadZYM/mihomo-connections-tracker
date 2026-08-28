@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mihomo 流量统计</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#162033;background:#f4f6f9}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1280px;margin:0 auto;padding:28px 20px 60px}.header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}.title h1{font-size:26px;margin:0 0 6px}.title p{margin:0;color:#6c7688;font-size:14px}.status{font-size:13px;color:#657084}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#b7bec9;margin-right:6px}.dot.ok{background:#2a9d67}.dot.bad{background:#d64b4b}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.card,.panel{background:#fff;border:1px solid #e3e7ed;border-radius:14px;box-shadow:0 1px 2px rgba(20,32,55,.035)}.card{padding:18px}.label{font-size:13px;color:#778196;margin-bottom:8px}.value{font-size:25px;font-weight:700;letter-spacing:-.02em}.panel{overflow:hidden;margin-top:16px}.panel-head{padding:16px 18px;border-bottom:1px solid #edf0f4;display:flex;align-items:center;justify-content:space-between}.panel-head h2{font-size:16px;margin:0}.panel-head span{font-size:12px;color:#7b8495}.tabs{display:flex;gap:7px}.tab{border:1px solid #dfe4eb;background:#fff;border-radius:8px;padding:7px 10px;cursor:pointer;color:#667085}.tab.active{background:#162033;color:#fff;border-color:#162033}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:11px 18px;border-bottom:1px solid #f0f2f5;text-align:left;white-space:nowrap}th{font-size:12px;color:#7a8497;font-weight:600;background:#fafbfc}tbody tr:hover{background:#fafbfc}.num{text-align:right;font-variant-numeric:tabular-nums}.ip{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.expand{cursor:pointer;font-weight:650}.chev{display:inline-block;width:18px;color:#8a94a6}.detail-row td{padding:0;background:#f9fafc}.detail{padding:12px 34px 18px}.detail table{background:#fff;border:1px solid #e8ecf1;border-radius:10px;overflow:hidden}.detail th,.detail td{padding:9px 12px}.muted{color:#8992a3}.error{padding:18px;color:#b42318}.empty{padding:25px;text-align:center;color:#8a94a6}.footer{margin-top:16px;color:#8a94a6;font-size:12px;text-align:right}@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.header{align-items:flex-start;flex-direction:column}.panel{overflow-x:auto}}@media(max-width:480px){.cards{grid-template-columns:1fr}.wrap{padding:18px 10px 40px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="title"><h1>Mihomo 流量统计</h1><p>按 ZeroTier / LAN 源 IP、规则和代理节点累计连接流量</p></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">正在连接…</span></div>
+  </div>
+  <div class="cards">
+    <div class="card"><div class="label">累计总流量</div><div class="value" id="total">—</div></div>
+    <div class="card"><div class="label">下载</div><div class="value" id="download">—</div></div>
+    <div class="card"><div class="label">上传</div><div class="value" id="upload">—</div></div>
+    <div class="card"><div class="label">连接记录</div><div class="value" id="connections">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>主机流量排行</h2><span>点击 IP 展开规则明细</span></div>
+    <div id="clients"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>流量分布</h2>
+      <div class="tabs"><button class="tab active" data-tab="rules">规则</button><button class="tab" data-tab="nodes">代理节点</button></div>
+    </div>
+    <div id="distribution"></div>
+  </div>
+  <div class="footer">自动刷新：10 秒 · Dashboard 无认证</div>
+</div>
+<script>
+const $=s=>document.querySelector(s);let clientRules=[];let activeTab='rules';let cached={rules:[],nodes:[]};
+function bytes(n){n=Number(n||0);if(n<1024)return n+' B';const u=['KB','MB','GB','TB','PB'];let i=-1;do{n/=1024;i++}while(n>=1024&&i<u.length-1);return n.toFixed(n>=100?0:n>=10?1:2)+' '+u[i]}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function get(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(r.status+' '+r.statusText);const j=await r.json();if(j.status==='error')throw new Error(j.message||'API error');return j.data??j}
+function tableHead(name){return `<table><thead><tr><th>${name}</th><th class="num">连接</th><th class="num">下载</th><th class="num">上传</th><th class="num">总流量</th></tr></thead><tbody>`}
+function trafficRow(name,x,cls=''){return `<tr class="${cls}"><td>${name}</td><td class="num">${Number(x.connections||0).toLocaleString()}</td><td class="num">${bytes(x.download)}</td><td class="num">${bytes(x.upload)}</td><td class="num"><strong>${bytes(x.total)}</strong></td></tr>`}
+function renderClients(rows){if(!rows.length){$('#clients').innerHTML='<div class="empty">暂无连接记录</div>';return}let h=tableHead('源 IP');for(const x of rows){const ip=esc(x.source_ip);h+=`<tr class="expand" data-ip="${ip}"><td><span class="chev">›</span><span class="ip">${ip}</span></td><td class="num">${Number(x.connections||0).toLocaleString()}</td><td class="num">${bytes(x.download)}</td><td class="num">${bytes(x.upload)}</td><td class="num"><strong>${bytes(x.total)}</strong></td></tr><tr class="detail-row" data-detail="${ip}" hidden><td colspan="5"><div class="detail"></div></td></tr>`}h+='</tbody></table>';$('#clients').innerHTML=h;document.querySelectorAll('.expand').forEach(row=>row.onclick=()=>toggleClient(row))}
+function toggleClient(row){const ip=row.dataset.ip;const d=document.querySelector(`[data-detail="${CSS.escape(ip)}"]`);const chev=row.querySelector('.chev');if(!d.hidden){d.hidden=true;chev.textContent='›';return}document.querySelectorAll('.detail-row').forEach(x=>x.hidden=true);document.querySelectorAll('.chev').forEach(x=>x.textContent='›');const rows=clientRules.filter(x=>x.source_ip===ip).sort((a,b)=>b.total-a.total);let h=tableHead('命中规则');for(const x of rows)h+=trafficRow(esc(x.display),x);h+='</tbody></table>';d.querySelector('.detail').innerHTML=rows.length?h:'<div class="empty">暂无规则记录</div>';d.hidden=false;chev.textContent='⌄'}
+function renderDistribution(){const rows=cached[activeTab]||[];if(!rows.length){$('#distribution').innerHTML='<div class="empty">暂无数据</div>';return}const key=activeTab==='rules'?'display':'node';let h=tableHead(activeTab==='rules'?'规则':'代理节点');for(const x of rows)h+=trafficRow(esc(x[key]),x);h+='</tbody></table>';$('#distribution').innerHTML=h}
+async function refresh(){try{const [summary,clients,rules,nodes,cr]=await Promise.all([get('/api/dashboard/summary'),get('/api/dashboard/clients'),get('/api/dashboard/rules'),get('/api/dashboard/nodes'),get('/api/dashboard/client-rules')]);$('#total').textContent=bytes(summary.total);$('#download').textContent=bytes(summary.download);$('#upload').textContent=bytes(summary.upload);$('#connections').textContent=Number(summary.connections||0).toLocaleString();clientRules=cr;cached={rules,nodes};renderClients(clients);renderDistribution();$('#dot').className='dot ok';$('#status').textContent='已连接 · '+new Date().toLocaleTimeString()}catch(e){$('#dot').className='dot bad';$('#status').textContent='读取失败';console.error(e)}}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeTab=b.dataset.tab;renderDistribution()});refresh();setInterval(refresh,10000);
+</script>
+</body>
+</html>
