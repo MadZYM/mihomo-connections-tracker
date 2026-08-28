@@ -18,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -26,9 +26,34 @@ jobs:
       - name: Install cross
         uses: taiki-e/install-action@cross
 
+      - name: Patch TLS dependencies for musl
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("backend/Cargo.toml")
+          text = path.read_text()
+
+          replacements = {
+              'sqlx = {version = "0.8.5", features = ["runtime-tokio-native-tls", "sqlite", "chrono"]}':
+                  'sqlx = {version = "0.8.5", default-features = false, features = ["runtime-tokio", "sqlite", "chrono"]}',
+              'reqwest = { version = "0.12.15", features = ["json"] }':
+                  'reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] }',
+          }
+
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"Expected Cargo.toml dependency line not found: {old}")
+              text = text.replace(old, new)
+
+          path.write_text(text)
+          PY
+
+          grep -E '^sqlx|^reqwest' backend/Cargo.toml
+
       - name: Build x86_64 musl
         working-directory: backend
-        run: cross build --release --locked --target x86_64-unknown-linux-musl
+        run: cross build --release --target x86_64-unknown-linux-musl
 
       - name: Prepare artifact
         run: |
@@ -39,7 +64,7 @@ jobs:
           sha256sum mihomo-connections-tracker_linux_x86_64_musl > mihomo-connections-tracker_linux_x86_64_musl.sha256
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mihomo-connections-tracker_linux_x86_64_musl
           path: |
