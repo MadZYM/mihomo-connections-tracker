@@ -19,8 +19,9 @@ pub async fn run(config: MasterConfig) -> Result<(), Box<dyn Error>> {
     
     println!("配置信息:");
     println!("  - 数据库: {}", config.database);
-    println!("  - 监听地址: {}:{}", config.listen_host, config.listen_port);
+    println!("  - API监听地址: {}:{}", config.listen_host, config.listen_port);
     println!("  - API认证: {}", config.api_token.as_ref().map_or("未启用", |_| "已启用"));
+    println!("  - Dashboard: http://{}:{}/ (无认证)", config.dashboard_host, config.dashboard_port);
     
     // 如果配置了Mihomo连接信息，则显示
     if let Some(mihomo_host) = &config.mihomo_host {
@@ -59,6 +60,17 @@ pub async fn run(config: MasterConfig) -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
+
+    // Dashboard 独立监听端口，固定不启用认证。
+    // 这样可以保留管理 API 的 Bearer Token，同时让可信 LAN/ZeroTier 客户端直接浏览统计页面。
+    let dashboard_db = database.clone();
+    let dashboard_host = config.dashboard_host.clone();
+    let dashboard_port = config.dashboard_port;
+    let dashboard_task = tokio::spawn(async move {
+        if let Err(e) = crate::dashboard::start(dashboard_db, &dashboard_host, dashboard_port).await {
+            eprintln!("Dashboard错误: {}", e);
+        }
+    });
     
     // 创建并启动API服务器
     let server = MasterServer::new(database, config.api_token);
@@ -69,6 +81,7 @@ pub async fn run(config: MasterConfig) -> Result<(), Box<dyn Error>> {
     // 启动服务器并等待中断信号
     tokio::select! {
         result = server.start(&config.listen_host, config.listen_port) => {
+            dashboard_task.abort();
             if let Err(e) = result {
                 eprintln!("服务器错误: {:?}", e);
                 return Err(e);
@@ -80,6 +93,7 @@ pub async fn run(config: MasterConfig) -> Result<(), Box<dyn Error>> {
             if let Some(mihomo_handle) = mihomo_task {
                 mihomo_handle.abort();
             }
+            dashboard_task.abort();
             println!("收到关闭信号，正在关闭服务器...");
             Ok(())
         }
@@ -105,4 +119,4 @@ async fn run_mihomo_collection(mihomo_client: MihomoClient, state: Arc<MasterSta
         // 使用公共函数处理连接更新
         process_connections(&data, &mut state_lock, db.clone(), agent_id.clone())
     }).await
-} 
+}
